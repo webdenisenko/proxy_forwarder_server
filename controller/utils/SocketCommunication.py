@@ -94,6 +94,9 @@ class SocketListener:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as self.listener:
             logger.debug('socket created')
 
+            # faster terminate (pass `Address already in use` exc)
+            self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
             # Bind localhost listener on special port
             self.listener.bind(('127.0.0.1', self.port))
             logger.debug(f'socket bound on :{self.port}')

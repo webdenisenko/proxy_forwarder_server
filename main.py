@@ -72,7 +72,7 @@ class ProxyForwarderServer:
                 # send to validation
                 threading.Thread(target=self._validate_new_connection, args=(conn, addr[0])).start()
 
-            except ConnectionAbortedError:
+            except (ConnectionAbortedError, OSError):
                 logger.debug('listener closed')
                 return
 
@@ -273,6 +273,21 @@ class ProxyForwarderServer:
         del self.entry_points[username]
 
         return True
+
+    @SocketCommunication.method(INSIDE_SOCKET_PORT)
+    def terminate(self):
+        # response until socket alive and close all sockets
+        return threading.Thread(target=self._terminate).start()
+
+    def _terminate(self):
+        # close all active connections
+        [self.delete_entry_point(entry_points) for entry_points in self.entry_points.keys()]
+
+        # close listener
+        self.listening_socket.close()
+
+        # close socket communicator
+        self._socket_communication.listener.close()
 
 
 if __name__ == '__main__':

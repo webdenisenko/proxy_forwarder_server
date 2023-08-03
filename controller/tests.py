@@ -36,8 +36,7 @@ class ProxyForwarderAPITestCase(APITestCase):
     def test_proxy_forwarder_connection(self):
 
         # run proxy forwarder server
-        PFS = multiprocessing.Process(target=ProxyForwarderServer, daemon=True)
-        PFS.start()
+        multiprocessing.Process(target=ProxyForwarderServer, daemon=True).start()
 
         # set parameters to serialization
         serializer = ProxyIdentSerializer(data={
@@ -84,3 +83,6 @@ class ProxyForwarderAPITestCase(APITestCase):
         none_ip = get_proxy_ip(f'socks5://{username}:{password}@127.0.0.1:{PUBLIC_PROXY_PORT}')
         self.assertIsNone(none_ip)
         print('LEVEL 5/5 -- CONNECTION CLOSED:', none_ip)
+
+        # close test proxy forwarder server
+        ProxyForwarderServer.terminate()

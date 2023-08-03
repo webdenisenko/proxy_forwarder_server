@@ -28,7 +28,7 @@ SECRET_KEY = get_random_secret_key()
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', cast=bool, default=True)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS').split(', ')
+ALLOWED_HOSTS = config('ALLOWED_HOSTS').split(',')
 CORS_ALLOWED_ORIGINS = [f'http://{host}' for host in ALLOWED_HOSTS]
 
 # Application definition

@@ -1,7 +1,11 @@
 The container deploys the Proxy Forwarder Server that acts as a bridge between the entry and exit points.
 
+Docker required to install:
+1. curl -fsSL https://get.docker.com -o get-docker.sh
+2. sudo sh get-docker.sh
+
 Deployment:
-1. Rename `.env.example` -> `.env` and setup
+1. Copy `.env.example` to `.env` and setup
 2. Launch command `docker-compose up -d --build`
 
 Stop container:
