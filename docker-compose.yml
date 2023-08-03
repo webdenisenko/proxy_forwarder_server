@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  test_runner:
+    build:
+      dockerfile: Dockerfile
+      context: .
+    container_name: test_runner
+    image: test_runner
+    env_file:
+      - .env
+    command: python manage.py test controller
+  pfs_server:
+    build:
+      dockerfile: Dockerfile
+      context: .
+    container_name: pfs_server
+    image: pfs_server
+    env_file:
+      - .env
+    command: |
+      sh -c "gunicorn -b 0.0.0.0:${PUBLIC_API_PORT} pfs.wsgi:application & python main.py"
+    ports:
+      - "${PUBLIC_API_PORT}:${PUBLIC_API_PORT}"
+      - "${PUBLIC_PROXY_PORT}:${PUBLIC_PROXY_PORT}"
+    depends_on:
+      - test_runner
