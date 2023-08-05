@@ -1,16 +1,16 @@
 version: "3.9"
 
 services:
-  pfs_server:
+  pfs_service:
     build:
       dockerfile: Dockerfile
       context: .
-    container_name: pfs_server
-    image: pfs_server
+    container_name: pfs_service
+    image: pfs_service
     env_file:
       - .env
     command: |
-      sh -c "python manage.py test controller && (gunicorn -b 0.0.0.0:${PUBLIC_API_PORT} pfs.wsgi:application & python main.py)"
+      sh -c "pytest ./app/tests.py && (gunicorn -b 0.0.0.0:${PUBLIC_API_PORT} app:app & python ./app/server/ProxyForwarderServer.py)"
     ports:
       - "${PUBLIC_API_PORT}:${PUBLIC_API_PORT}"
       - "${PUBLIC_PROXY_PORT}:${PUBLIC_PROXY_PORT}"

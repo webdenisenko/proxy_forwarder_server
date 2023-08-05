@@ -5,14 +5,17 @@ import select
 import time
 
 import socks
+from decouple import config
 
-from controller.objetcs.EntryPoint import EntryPoint
-from controller.utils import SocketCommunication
-from controller.utils.get_logger import get_logger
-from pfs.settings import PUBLIC_PROXY_PORT, INSIDE_SOCKET_PORT
+from app.objetcs.EntryPoint import EntryPoint
+from app.objetcs.ForwarderProxy import ForwarderProxy
+from app.server import SocketCommunication
+from app.utils.get_logger import get_logger
+
+PUBLIC_PROXY_PORT = config('PUBLIC_PROXY_PORT', cast=int)
+INSIDE_SOCKET_PORT = config('INSIDE_SOCKET_PORT', cast=int)
 
 SOCKS_VERSION = 5
-
 logger = get_logger(__name__)
 
 
@@ -99,7 +102,7 @@ class ProxyForwarderServer:
             assert self.entry_points[username].password == password
 
             # validation: entry hosts match
-            assert self.entry_points[username].entry_host == entry_address
+            assert self.entry_points[username].client_host == entry_address
 
             connection.sendall(bytes([version, 0]))
         except:
@@ -223,29 +226,31 @@ class ProxyForwarderServer:
             time.sleep(self.INACTIVE_TIMEOUT)
 
     @SocketCommunication.method(INSIDE_SOCKET_PORT)
-    def create_entry_point(self, username: str, password: str, proxy_ident: str, entry_host: str = None):
+    def create_entry_point(self, username: str, password: str, proxy_kwargs: dict, client_host: str = None):
 
         # check duplicate
         if username in self.entry_points:
             return None
 
         # localhost as default
-        entry_host = entry_host or '127.0.0.1'
+        client_host = client_host or '127.0.0.1'
 
-        # validate and create entry point
+        proxy = ForwarderProxy(**proxy_kwargs)
+
+        # create entry point object
         entry_point = EntryPoint(
             username=username,
             password=password,
-            proxy_ident=proxy_ident,
-            entry_host=entry_host,
+            proxy=proxy,
+            client_host=client_host,
         )
 
         # allow host
-        if entry_host not in self.allowed_hosts:
-            self.allowed_hosts[entry_host] = []
+        if client_host not in self.allowed_hosts:
+            self.allowed_hosts[client_host] = []
 
         # set link to entry point object
-        self.allowed_hosts[entry_host].append(username)
+        self.allowed_hosts[client_host].append(username)
 
         # set entry point object
         self.entry_points[username] = entry_point
@@ -262,17 +267,21 @@ class ProxyForwarderServer:
         self.entry_points[username].close_all_connections()
 
         # delete from allowed hosts
-        entry_host = self.entry_points[username].entry_host
-        self.allowed_hosts[entry_host].remove(username)
+        client_host = self.entry_points[username].client_host
+        self.allowed_hosts[client_host].remove(username)
 
         # delete allowed host if empty
-        if not self.allowed_hosts[entry_host]:
-            del self.allowed_hosts[entry_host]
+        if not self.allowed_hosts[client_host]:
+            del self.allowed_hosts[client_host]
 
         # delete entry point
         del self.entry_points[username]
 
         return True
+
+    @SocketCommunication.method(INSIDE_SOCKET_PORT)
+    def exists_entry_point(self, username: str):
+        return username in self.entry_points
 
     @SocketCommunication.method(INSIDE_SOCKET_PORT)
     def terminate(self):
@@ -281,7 +290,7 @@ class ProxyForwarderServer:
 
     def _terminate(self):
         # close all active connections
-        [self.delete_entry_point(entry_points) for entry_points in self.entry_points.keys()]
+        [self.delete_entry_point(entry_points) for entry_points in self.entry_points.copy().keys()]
 
         # close listener
         self.listening_socket.close()

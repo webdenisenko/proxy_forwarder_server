@@ -1,6 +1,8 @@
 import logging
 
-from pfs.settings import LOG_LEVEL
+from decouple import config
+
+LOG_LEVEL = config('LOG_LEVEL', default='INFO')
 
 
 def get_logger(name):

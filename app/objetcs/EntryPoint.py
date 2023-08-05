@@ -1,25 +1,22 @@
-import ipaddress
 import time
-
-from controller.objetcs.Proxy import Proxy
 
 
 class EntryPoint:
     username: str
     password: str
-    proxy: Proxy
-    entry_host: str
+    proxy: 'ForwarderProxy'
+    client_host: str
 
     connections: list
     last_activity: float
 
-    def __init__(self, username: str, password: str, proxy_ident: str, entry_host: str):
+    def __init__(self, username: str, password: str, proxy: 'ForwarderProxy', client_host: str):
 
         # set
         self.username = username
         self.password = password
-        self.proxy = Proxy(proxy_ident)
-        self.entry_host = ipaddress.ip_address(entry_host).compressed
+        self.proxy = proxy
+        self.client_host = client_host
 
         # default
         self.connections = []

@@ -6,6 +6,7 @@ ENV DEBUG 0
 
 # set base directory
 WORKDIR /app
+ENV PYTHONPATH /app
 
 # upgrade pip version
 RUN pip install --upgrade pip

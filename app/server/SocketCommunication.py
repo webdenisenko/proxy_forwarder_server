@@ -9,7 +9,7 @@ import threading
 import traceback
 from typing import Type
 
-from controller.utils.get_logger import get_logger
+from app.utils.get_logger import get_logger
 
 EXCEPTION = b'x8742365__exc__'
 BUF_SIZE = 4096
