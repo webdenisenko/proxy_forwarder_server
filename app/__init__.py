@@ -15,4 +15,4 @@ if __name__ == '__main__':
     PUBLIC_API_PORT = config('PUBLIC_API_PORT', default=8000, cast=int)
     DEBUG = config('DEBUG', default=True, cast=bool)
 
-    app.run(port=PUBLIC_API_PORT, debug=DEBUG)
+    app.run(host='0.0.0.0', port=PUBLIC_API_PORT, debug=DEBUG)
