@@ -43,7 +43,7 @@ class ProxyForwarderServer:
 
     entry_points: Dict[str, EntryPoint] # username as entry point identificator
     allowed_hosts: Dict[str, List[str]] # host as key, list of usernames on host as value
-    dump_streams: Dict[str, List[Dict]] # username as dump identificator, connection session -> {outgoing_stream: bytes, outgoing_size_b: float, incoming_stream: bytes, incoming_size_b: float} as value
+    dump_streams: Dict[str, Dict[int, Dict]] # username as dump identificator, connection session -> {outgoing_stream: bytes, outgoing_size_b: float, incoming_stream: bytes, incoming_size_b: float} as value
 
     def __init__(self):
         """
@@ -186,12 +186,13 @@ class ProxyForwarderServer:
 
             # define current stream index in slot
             dump_index = len(self.dump_streams)
-            self.dump_streams[username].append({
+            self.dump_streams[username][dump_index] = {
                 'outgoing_stream': [] if dump_stream else None,
                 'outgoing_size_b': 0,
                 'incoming_stream': [] if dump_stream else None,
                 'incoming_size_b': 0,
-            })
+            }
+            print('dump_index', dump_index, len(self.dump_streams), self.dump_streams)
 
             # proxy connected
             proxy_response = remote.recv(self.BUFFER_SIZE).decode('utf-8')
@@ -296,7 +297,7 @@ class ProxyForwarderServer:
         self.entry_points[username] = entry_point
 
         # set dump slot
-        self.dump_streams[username] = []
+        self.dump_streams[username] = {}
 
         return time.time()
 
