@@ -59,7 +59,7 @@ class ProxyForwarderServer:
         self.listening_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         # Bind proxy server on special port
-        self.listening_socket.bind(('127.0.0.1', PUBLIC_PROXY_PORT))
+        self.listening_socket.bind(('0.0.0.0', PUBLIC_PROXY_PORT))
 
         # run listener socket
         self.listening_socket.listen(socket.SOMAXCONN)
@@ -192,7 +192,6 @@ class ProxyForwarderServer:
                 'incoming_stream': [] if dump_stream else None,
                 'incoming_size_b': 0,
             }
-            print('dump_index', dump_index, len(self.dump_streams), self.dump_streams)
 
             # proxy connected
             proxy_response = remote.recv(self.BUFFER_SIZE).decode('utf-8')
