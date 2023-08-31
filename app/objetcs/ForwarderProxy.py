@@ -50,7 +50,7 @@ class ForwarderProxy:
             if not session:
                 session = ''.join(random.choices(string.ascii_uppercase + string.ascii_lowercase, k=self.SESSION_LEN))
 
-            password += f'_session-{session}_lifetime-{duration}'
+            password += f'_session-{session}_lifetime-{duration}_skipispstatic-1'
 
         # set parameters
         self.ip = None

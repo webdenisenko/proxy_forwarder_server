@@ -70,7 +70,8 @@ def entrypoint_create():
                 'credentials': {
                     'username': validated_data.get('username'),
                     'password': validated_data.get('password'),
-                }
+                },
+                'timestamp': created
             })
 
     return error(f'Entry point `{validated_data.get("username")}` already exists')
@@ -83,9 +84,10 @@ def entrypoint_delete():
     if not username:
         raise ValidationError('Username not provided')
 
-    if ProxyForwarderServer.delete_entry_point(username):
-        message = f'Entry point `{username}` deleted'
-    else:
+    result = ProxyForwarderServer.delete_entry_point(username)
+    if result is None:
         message = f'Entry point `{username}` not exists'
+    else:
+        message = f'Entry point `{username}` deleted'
 
-    return success(message)
+    return success(message, data=result)

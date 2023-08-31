@@ -16,4 +16,5 @@ The container will be available on 2 public ports:
 - .env :: ${PUBLIC_PROXY_PORT} - SOCKS5 proxy
 
 API methods:
-- [POST DELETE] /api/v1/entrypoint
+- [POST] /api/v1/entrypoint
+- [DELETE] /api/v1/entrypoint

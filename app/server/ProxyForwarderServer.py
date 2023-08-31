@@ -1,8 +1,11 @@
 import base64
+import ipaddress
+import pickle
 import socket
 import threading
 import select
 import time
+from typing import Dict, List
 
 import socks
 from decouple import config
@@ -22,6 +25,13 @@ logger = get_logger(__name__)
 @SocketCommunication.listen(INSIDE_SOCKET_PORT)
 class ProxyForwarderServer:
 
+    TELEGRAM_SERVERS = [
+        '91.105.192.0/23', '91.108.4.0/22', '91.108.8.0/22', '91.108.12.0/22',
+        '91.108.16.0/22', '91.108.20.0/22', '91.108.56.0/23', '91.108.58.0/23',
+        '95.161.64.0/20', '149.154.160.0/21', '149.154.168.0/22', '149.154.172.0/22',
+        '185.76.151.0/24',
+    ]
+
     BUFFER_SIZE = 4096
     INACTIVE_TIMEOUT = 300 # sec
 
@@ -31,8 +41,9 @@ class ProxyForwarderServer:
 
     listening_socket: socket
 
-    entry_points: dict
-    allowed_hosts: dict
+    entry_points: Dict[str, EntryPoint] # username as entry point identificator
+    allowed_hosts: Dict[str, List[str]] # host as key, list of usernames on host as value
+    dump_streams: Dict[str, List[Dict]] # username as dump identificator, connection session -> {outgoing_stream: bytes, outgoing_size_b: float, incoming_stream: bytes, incoming_size_b: float} as value
 
     def __init__(self):
         """
@@ -42,6 +53,7 @@ class ProxyForwarderServer:
         # default init
         self.entry_points = {}
         self.allowed_hosts = {}
+        self.dump_streams = {}
 
         # init listener socket
         self.listening_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -169,6 +181,18 @@ class ProxyForwarderServer:
         # establish data exchange
         if reply[1] == 0:
 
+            # is telegram stream
+            dump_stream = any([ipaddress.IPv4Address(address) in ipaddress.IPv4Network(ip_mask) for ip_mask in self.TELEGRAM_SERVERS])
+
+            # define current stream index in slot
+            dump_index = len(self.dump_streams)
+            self.dump_streams[username].append({
+                'outgoing_stream': [] if dump_stream else None,
+                'outgoing_size_b': 0,
+                'incoming_stream': [] if dump_stream else None,
+                'incoming_size_b': 0,
+            })
+
             # proxy connected
             proxy_response = remote.recv(self.BUFFER_SIZE).decode('utf-8')
             if not proxy_response.startswith('HTTP/1.1 200'):
@@ -186,12 +210,28 @@ class ProxyForwarderServer:
                 # send from client
                 if connection in r:
                     data = connection.recv(self.BUFFER_SIZE)
+
+                    # dump stream data
+                    if dump_stream:
+                        self.dump_streams[username][dump_index]['outgoing_stream'].append((time.time(), data))
+
+                    # increase stream size
+                    self.dump_streams[username][dump_index]['outgoing_size_b'] += len(data)
+
                     if remote.send(data) <= 0:
                         break
 
                 # receive from remote
                 if remote in r:
                     data = remote.recv(self.BUFFER_SIZE)
+
+                    # dump stream data
+                    if dump_stream:
+                        self.dump_streams[username][dump_index]['incoming_stream'].append((time.time(), data))
+
+                    # increase stream size
+                    self.dump_streams[username][dump_index]['incoming_size_b'] += len(data)
+
                     if connection.send(data) <= 0:
                         break
 
@@ -255,13 +295,16 @@ class ProxyForwarderServer:
         # set entry point object
         self.entry_points[username] = entry_point
 
-        return True
+        # set dump slot
+        self.dump_streams[username] = []
+
+        return time.time()
 
     @SocketCommunication.method(INSIDE_SOCKET_PORT)
     def delete_entry_point(self, username: str):
 
         if username not in self.entry_points:
-            return False
+            return None
 
         # close all entry point connections
         self.entry_points[username].close_all_connections()
@@ -277,7 +320,14 @@ class ProxyForwarderServer:
         # delete entry point
         del self.entry_points[username]
 
-        return True
+        # convert and clear dump
+        dump_stream = pickle.dumps(self.dump_streams[username]).hex()
+        del self.dump_streams[username]
+
+        return {
+            'stream': dump_stream,
+            'timestamp': time.time()
+        }
 
     @SocketCommunication.method(INSIDE_SOCKET_PORT)
     def exists_entry_point(self, username: str):

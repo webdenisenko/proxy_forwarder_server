@@ -1,4 +1,5 @@
 import ipaddress
+import random
 
 from marshmallow import Schema, fields, ValidationError, validates, validate
 
@@ -6,7 +7,7 @@ from app.objetcs.ForwarderProxy import AVAILABLE_COUNTRIES, DURATION_TYPES
 
 
 class EntryPointSchema(Schema):
-    username = fields.String(required=True, validate=validate.Length(min=1, max=64))
+    username = fields.String(required=True, validate=validate.Length(min=1, max=64)) # as session identification
     password = fields.String(required=True, validate=validate.Length(min=1, max=64))
     ip_country = fields.String()
     ip_session = fields.String(validate=validate.Length(min=8, max=14))
