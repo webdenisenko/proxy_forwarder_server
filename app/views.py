@@ -1,4 +1,5 @@
 """ Views and Urls of application """
+import json
 import random
 
 from flask import Blueprint, request
@@ -17,9 +18,16 @@ routes = Blueprint('routes', __name__)
 def entrypoint_create():
     serializer = EntryPointSchema()
 
+    # put client address as inspector address
+    request_data = request.form.to_dict()
+    if 'inspector' in request_data and request_data['inspector']:
+        request_data['inspector'] = json.loads(request_data['inspector']) | {
+            'address': request.remote_addr
+        }
+
     # validate data
     try:
-        validated_data = serializer.load(request.form)
+        validated_data = serializer.load(request_data)
     except ValidationError as exc:
         return error('Invalid data', exc.messages)
 
@@ -38,7 +46,7 @@ def entrypoint_create():
                     'ip_country', random.choice(AVAILABLE_COUNTRIES) # set random country if empty
                 ),
                 session=validated_data.get('ip_session', None),
-                duration=validated_data.get('ip_duration', None)
+                duration=validated_data.get('ip_duration', None),
             )
 
             # test connection
@@ -48,7 +56,7 @@ def entrypoint_create():
         else:
             raise ConnectionError('failed to get a valid proxy')
 
-        created = ProxyForwarderServer.create_entry_point(
+        created_at = ProxyForwarderServer.create_entry_point(
             username=validated_data.get('username'),
             password=validated_data.get('password'),
             proxy_kwargs={
@@ -57,12 +65,13 @@ def entrypoint_create():
                 'duration': proxy.duration,
             },
             client_host=validated_data.get('client_host', None),
+            inspector=validated_data.get('inspector'),
         )
 
-        if created:
+        if created_at:
             return success(f'Entry point `{validated_data.get("username")}` successfully created', data={
-                'ip': {
-                    'address': proxy.ip,
+                'proxy_info': {
+                    'ip': proxy.ip,
                     'country': proxy.country,
                     'session': proxy.session,
                     'duration': proxy.duration,
@@ -71,7 +80,7 @@ def entrypoint_create():
                     'username': validated_data.get('username'),
                     'password': validated_data.get('password'),
                 },
-                'timestamp': created
+                'created_at': created_at
             })
 
     return error(f'Entry point `{validated_data.get("username")}` already exists')
@@ -84,10 +93,10 @@ def entrypoint_delete():
     if not username:
         raise ValidationError('Username not provided')
 
-    result = ProxyForwarderServer.delete_entry_point(username)
-    if result is None:
+    response = ProxyForwarderServer.delete_entry_point(username)
+    if response is None:
         message = f'Entry point `{username}` not exists'
     else:
         message = f'Entry point `{username}` deleted'
 
-    return success(message, data=result)
+    return success(message, data=response)

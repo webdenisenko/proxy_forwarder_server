@@ -14,7 +14,7 @@ PROXY_BASE_PASSWORD = config('PROXY_BASE_PASSWORD')
 
 
 AVAILABLE_COUNTRIES = ['ae', 'al', 'am', 'ao', 'ar', 'at', 'au', 'az', 'ba', 'bb', 'bd', 'be', 'bf', 'bg', 'bh', 'bj', 'bn', 'bo', 'br', 'bw', 'by', 'bz', 'ca', 'ch', 'ci', 'cl', 'cm', 'cn', 'co', 'cr', 'cu', 'cw', 'cy', 'cz', 'de', 'dk', 'dm', 'do', 'dz', 'ec', 'ee', 'eg', 'es', 'et', 'fi', 'fr', 'ga', 'gb', 'ge', 'gh', 'gr', 'gt', 'gy', 'hk', 'hn', 'hr', 'ht', 'hu', 'id', 'ie', 'il', 'in', 'iq', 'ir', 'is', 'it', 'jm', 'jo', 'jp', 'ke', 'kg', 'kh', 'kr', 'kw', 'kz', 'la', 'lb', 'lc', 'lk', 'ls', 'lt', 'lu', 'lv', 'ly', 'ma', 'md', 'me', 'mg', 'mk', 'ml', 'mm', 'mn', 'mo', 'mt', 'mu', 'mv', 'mw', 'mx', 'my', 'mz', 'na', 'ng', 'ni', 'nl', 'no', 'np', 'nz', 'om', 'pa', 'pe', 'ph', 'pk', 'pl', 'pr', 'ps', 'pt', 'py', 'qa', 're', 'ro', 'rs', 'ru', 'rw', 'se', 'sg', 'si', 'sk', 'sn', 'so', 'sr', 'sv', 'sy', 'tg', 'th', 'tj', 'tn', 'tr', 'tt', 'tw', 'tz', 'ua', 'ug', 'us', 'uy', 'uz', 've', 'vn', 'za', 'zm', 'zw']
-DURATION_TYPES = {'s': 59, 'm': 59, 'h': 24, 'd': 7}
+DURATION_TYPES = {'s': 59, 'm': 59, 'h': 158}
 
 
 class ForwarderProxy:

@@ -1,9 +1,29 @@
 import ipaddress
-import random
 
 from marshmallow import Schema, fields, ValidationError, validates, validate
 
 from app.objetcs.ForwarderProxy import AVAILABLE_COUNTRIES, DURATION_TYPES
+
+
+class InspectorSchema(Schema):
+    address = fields.String()
+    port = fields.Int()
+    filters = fields.List(fields.String(), default=None, required=False)
+
+    @validates('address')
+    def validate_address(self, value):
+        try:
+            ipaddress.ip_address(value)
+        except ValueError as exc:
+            raise ValidationError(str(exc))
+
+    @validates('filters')
+    def validate_filters(self, value):
+        for ip in value:
+            try:
+                ipaddress.ip_network(ip)
+            except ValueError as exc:
+                raise ValidationError(str(exc))
 
 
 class EntryPointSchema(Schema):
@@ -13,17 +33,17 @@ class EntryPointSchema(Schema):
     ip_session = fields.String(validate=validate.Length(min=8, max=14))
     ip_duration = fields.String()
     client_host = fields.String()
+    inspector = fields.Nested(InspectorSchema(), default=None, required=False)
 
     @validates('ip_country')
     def validate_ip_country(self, value):
-
         # check in supported list
         if value not in AVAILABLE_COUNTRIES:
             raise ValidationError(f'country `{value}` not supported')
 
     @validates('ip_duration')
     def validate_ip_duration(self, value):
-        if not (2 <= len(value) <= 3) or not value[:-1].isdigit():
+        if not (2 <= len(value) <= 4) or not value[:-1].isdigit():
             raise ValidationError(f'Wrong format `{value}`. Example: 59s')
 
         # validate duration type

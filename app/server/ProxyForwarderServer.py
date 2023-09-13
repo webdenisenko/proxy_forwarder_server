@@ -1,38 +1,25 @@
-import base64
-import ipaddress
-import pickle
 import socket
 import threading
-import select
 import time
+import traceback
 from typing import Dict, List
 
-import socks
 from decouple import config
 
 from app.objetcs.EntryPoint import EntryPoint
 from app.objetcs.ForwarderProxy import ForwarderProxy
+from app.objetcs.RemotePoint import RemotePoint
 from app.server import SocketCommunication
 from app.utils.get_logger import get_logger
 
 PUBLIC_PROXY_PORT = config('PUBLIC_PROXY_PORT', cast=int)
 INSIDE_SOCKET_PORT = config('INSIDE_SOCKET_PORT', cast=int)
 
-SOCKS_VERSION = 5
 logger = get_logger(__name__)
 
 
 @SocketCommunication.listen(INSIDE_SOCKET_PORT)
 class ProxyForwarderServer:
-
-    TELEGRAM_SERVERS = [
-        '91.105.192.0/23', '91.108.4.0/22', '91.108.8.0/22', '91.108.12.0/22',
-        '91.108.16.0/22', '91.108.20.0/22', '91.108.56.0/23', '91.108.58.0/23',
-        '95.161.64.0/20', '149.154.160.0/21', '149.154.168.0/22', '149.154.172.0/22',
-        '185.76.151.0/24',
-    ]
-
-    BUFFER_SIZE = 4096
     INACTIVE_TIMEOUT = 300 # sec
 
     DISALLOW_ADDRESSES = [
@@ -43,7 +30,6 @@ class ProxyForwarderServer:
 
     entry_points: Dict[str, EntryPoint] # username as entry point identificator
     allowed_hosts: Dict[str, List[str]] # host as key, list of usernames on host as value
-    dump_streams: Dict[str, Dict[int, Dict]] # username as dump identificator, connection session -> {outgoing_stream: bytes, outgoing_size_b: float, incoming_stream: bytes, incoming_size_b: float} as value
 
     def __init__(self):
         """
@@ -53,7 +39,6 @@ class ProxyForwarderServer:
         # default init
         self.entry_points = {}
         self.allowed_hosts = {}
-        self.dump_streams = {}
 
         # init listener socket
         self.listening_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -79,9 +64,11 @@ class ProxyForwarderServer:
             try:
                 conn, addr = self.listening_socket.accept()
 
+                print('data', conn.recv(4015))
+
                 # refuse unrecognized entry hosts
                 if addr[0] not in self.allowed_hosts:
-                    self._refuse_connection(conn)
+                    RemotePoint.refuse_connection(conn)
                     continue
 
                 # send to validation
@@ -97,8 +84,8 @@ class ProxyForwarderServer:
             methods = [ord(connection.recv(1)) for i in range(nmethods)]
             assert 2 in set(methods)
 
-            # send welcome message
-            connection.sendall(bytes([SOCKS_VERSION, 2]))
+            # send welcome message (5 - is socket version)
+            connection.sendall(bytes([5, 2]))
 
             # verify username and password
             version = ord(connection.recv(1))  # should be 1
@@ -119,7 +106,7 @@ class ProxyForwarderServer:
             connection.sendall(bytes([version, 0]))
         except:
             # invalid request
-            return self._refuse_connection(connection)
+            return RemotePoint.refuse_connection(connection)
         
         # send to connection thread
         threading.Thread(target=self._connection_thread, args=(connection, username)).start()
@@ -128,7 +115,7 @@ class ProxyForwarderServer:
         version, cmd, _, address_type = connection.recv(4)
 
         if cmd != 1:
-            return self._refuse_connection(connection)
+            return RemotePoint.refuse_connection(connection)
 
         if address_type == 1:  # IPv4
             address = socket.inet_ntoa(connection.recv(4))
@@ -137,123 +124,29 @@ class ProxyForwarderServer:
             address = connection.recv(domain_length)
             address = socket.gethostbyname(address)
         else:
-            return self._refuse_connection(connection)
+            return RemotePoint.refuse_connection(connection)
 
         # remote address disallowed
         if address in self.DISALLOW_ADDRESSES:
-            return self._refuse_connection(connection)
+            return RemotePoint.refuse_connection(connection)
 
         # convert bytes to unsigned short array
         port = int.from_bytes(connection.recv(2), 'big', signed=False)
 
-        # append connection
-        self.entry_points[username].connections.append(connection)
-
-        # connecting to remote
-        remote = socks.socksocket(socket.AF_INET, socket.SOCK_STREAM)
-
-        # connect proxy
-        proxy = self.entry_points[username].proxy
-        remote.connect((proxy.host, proxy.port))
-        remote.sendall(b'CONNECT %s:%s HTTP/1.1\r\n'
-                       b'Proxy-Authorization: Basic %s\r\n\r\n' %
-                       (address.encode(), str(port).encode(), base64.b64encode(bytes(f'{proxy.username}:{proxy.password}', 'utf-8'))))
-
-        bind_address = remote.getsockname()
-        logger.info(f'Connected to {address}:{port} via http proxy({str(proxy)[:20]}...)')
-
-        addr = int.from_bytes(socket.inet_aton(bind_address[0]), 'big', signed=False)
-        port = bind_address[1]
-
-        reply = b''.join([
-            SOCKS_VERSION.to_bytes(1, 'big'),
-            int(0).to_bytes(1, 'big'),
-            int(0).to_bytes(1, 'big'),
-            int(1).to_bytes(1, 'big'),
-            addr.to_bytes(4, 'big'),
-            port.to_bytes(2, 'big')
-        ])
-        connection.sendall(reply)
-
-        # append connection
-        self.entry_points[username].connections.append(remote)
-
-        # establish data exchange
-        if reply[1] == 0:
-
-            # is telegram stream
-            dump_stream = any([ipaddress.IPv4Address(address) in ipaddress.IPv4Network(ip_mask) for ip_mask in self.TELEGRAM_SERVERS])
-
-            # define current stream index in slot
-            dump_index = len(self.dump_streams)
-            self.dump_streams[username][dump_index] = {
-                'outgoing_stream': [] if dump_stream else None,
-                'outgoing_size_b': 0,
-                'incoming_stream': [] if dump_stream else None,
-                'incoming_size_b': 0,
-            }
-
-            # proxy connected
-            proxy_response = remote.recv(self.BUFFER_SIZE).decode('utf-8')
-            if not proxy_response.startswith('HTTP/1.1 200'):
-                return self._refuse_connection(connection)
-
-            # communicate
-            while True:
-
-                # wait until client or remote is available for read
-                r, w, e = select.select([connection, remote], [], [])
-
-                # update last activity
-                self.entry_points[username].update_activity()
-
-                # send from client
-                if connection in r:
-                    data = connection.recv(self.BUFFER_SIZE)
-
-                    # dump stream data
-                    if dump_stream:
-                        self.dump_streams[username][dump_index]['outgoing_stream'].append((time.time(), data))
-
-                    # increase stream size
-                    self.dump_streams[username][dump_index]['outgoing_size_b'] += len(data)
-
-                    if remote.send(data) <= 0:
-                        break
-
-                # receive from remote
-                if remote in r:
-                    data = remote.recv(self.BUFFER_SIZE)
-
-                    # dump stream data
-                    if dump_stream:
-                        self.dump_streams[username][dump_index]['incoming_stream'].append((time.time(), data))
-
-                    # increase stream size
-                    self.dump_streams[username][dump_index]['incoming_size_b'] += len(data)
-
-                    if connection.send(data) <= 0:
-                        break
-
-        # close connection
         try:
-            connection.close()
+            # create connection to remote
+            remote_point = self.entry_points[username].create_remote_point(
+                server_address=address,
+                port=port,
+                client_socket=connection,
+            )
+        except (ConnectionError, TimeoutError) as exc:
+            logger.error(f'failed connection to {address}:{port} ({type(exc)}): {exc}')
         except:
-            pass
-
-        try:
-            remote.close()
-        except:
-            pass
-
-    @staticmethod
-    def _refuse_connection(connection):
-        try:
-            connection.sendall(bytes([1, 0xFF]))
-            connection.close()
-        except OSError:
-            # connection already closed
-            return
+            traceback.print_exc()
+        else:
+            # watch while connected
+            remote_point.watch()
 
     def _inactive_connection_monitoring(self):
         while True:
@@ -266,7 +159,7 @@ class ProxyForwarderServer:
             time.sleep(self.INACTIVE_TIMEOUT)
 
     @SocketCommunication.method(INSIDE_SOCKET_PORT)
-    def create_entry_point(self, username: str, password: str, proxy_kwargs: dict, client_host: str = None):
+    def create_entry_point(self, username: str, password: str, proxy_kwargs: dict, client_host: str = None, inspector: dict = None):
 
         # check duplicate
         if username in self.entry_points:
@@ -283,6 +176,7 @@ class ProxyForwarderServer:
             password=password,
             proxy=proxy,
             client_host=client_host,
+            inspector=inspector
         )
 
         # allow host
@@ -295,9 +189,6 @@ class ProxyForwarderServer:
         # set entry point object
         self.entry_points[username] = entry_point
 
-        # set dump slot
-        self.dump_streams[username] = {}
-
         return time.time()
 
     @SocketCommunication.method(INSIDE_SOCKET_PORT)
@@ -306,8 +197,8 @@ class ProxyForwarderServer:
         if username not in self.entry_points:
             return None
 
-        # close all entry point connections
-        self.entry_points[username].close_all_connections()
+        # close entry point and all connections
+        total_proxy_outgoing_usage_b, total_proxy_incoming_usage_b = self.entry_points[username].close()
 
         # delete from allowed hosts
         client_host = self.entry_points[username].client_host
@@ -320,13 +211,10 @@ class ProxyForwarderServer:
         # delete entry point
         del self.entry_points[username]
 
-        # convert and clear dump
-        dump_stream = pickle.dumps(self.dump_streams[username]).hex()
-        del self.dump_streams[username]
-
         return {
-            'stream': dump_stream,
-            'timestamp': time.time()
+            'deleted_at': time.time(),
+            'total_proxy_outgoing_usage_b': total_proxy_outgoing_usage_b,
+            'total_proxy_incoming_usage_b': total_proxy_incoming_usage_b
         }
 
     @SocketCommunication.method(INSIDE_SOCKET_PORT)
