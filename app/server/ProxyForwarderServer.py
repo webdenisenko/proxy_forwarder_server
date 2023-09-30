@@ -64,8 +64,6 @@ class ProxyForwarderServer:
             try:
                 conn, addr = self.listening_socket.accept()
 
-                print('data', conn.recv(4015))
-
                 # refuse unrecognized entry hosts
                 if addr[0] not in self.allowed_hosts:
                     RemotePoint.refuse_connection(conn)
